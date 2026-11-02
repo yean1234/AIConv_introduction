@@ -1,287 +1,227 @@
 (() => {
   const { COURSES, RECORDS } = window.SITE_DATA;
+  const { CHARS, VILLAGES } = window.VILLAGE_DATA;
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const md = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  const pad = (n) => String(n).padStart(2, '0');
+  const plain = (s) => String(s ?? '').replace(/\*\*/g, '').replace(/[.。]\s*$/, '');
 
-  const crateEl = $('#crate');
-  const stackEl = $('#stack');
-  const dotsEl = $('#dots');
+  const gateEl = $('#gate');
+  const mapEl = $('#map');
   const albumEl = $('#album');
   const playerEl = $('#player');
 
-  const inkColor = (rec) => (rec.ink === 'light' ? '#ededed' : '#0a0a0a');
-  const recVars = (rec) => `--g1:${rec.grad[0]};--g2:${rec.grad[1]};--ink:${inkColor(rec)}`;
-
-  /* ───────────────────────── 카드 마크업 ───────────────────────── */
-  function cardHTML(rec, i, { tag = 'a', front = false } = {}) {
-    const light = rec.ink === 'light' ? '-light' : '';
-    const attrs = tag === 'a'
-      ? `href="#/${rec.id}" draggable="false" aria-label="${esc(rec.title)} 앨범 열기"${front ? '' : ' tabindex="-1"'}`
-      : 'aria-hidden="true"';
-    return `
-      <div class="vinyl" aria-hidden="true">
-        <div class="vinyl__disc"><div class="vinyl__label"><span>${esc(rec.short)}</span></div></div>
-        <div class="vinyl__sheen"></div>
-      </div>
-      <${tag} class="card" data-ink="${rec.ink}" ${attrs}>
-        <div class="card__ring card__ring--1"><img src="assets/ring-1${light}.svg" alt="" draggable="false"></div>
-        <div class="card__ring card__ring--2"><img src="assets/ring-2${light}.svg" alt="" draggable="false"></div>
-        <div class="card__gloss"></div>
-        <p class="card__num">${pad(i + 1)}</p>
-        <div class="card__chip">${esc(rec.card.chip)}</div>
-        <p class="card__title">${esc(rec.card.title)}</p>
-        <p class="card__sub">${esc(rec.card.sub)}</p>
-        <div class="card__go"><img src="assets/arrow-button${light}.svg" alt="" draggable="false"></div>
-        <div class="card__arrow"><span><img src="assets/arrow${light}.svg" alt="" draggable="false"></span></div>
-        <div class="card__tint"></div>
-      </${tag}>`;
-  }
-
-  /* ───────────────────────── 카드 셔플 스택 ─────────────────────────
-     Figma 모션: 뒤 카드일수록 작게·위로·기울고·흐리고·어둡게.
-     맨 앞 카드는 살짝 당겼다가(wind-up) 오른쪽으로 날아가고, 나머지는 스프링으로 한 칸씩 올라온다. */
-  const DEPTHS = [
-    { y: 0, s: 1, r: 0, b: 0, t: 0.01, o: 1 },
-    { y: -72, s: 0.93, r: -1.6, b: 0, t: 0.12, o: 1 },
-    { y: -132, s: 0.86, r: 2.2, b: 1.5, t: 0.24, o: 1 },
-    { y: -188, s: 0.79, r: -2.4, b: 3, t: 0.36, o: 1 },
-    { y: -240, s: 0.72, r: 2.8, b: 5, t: 0.5, o: 0.55 },
-  ];
-  const HIDDEN = { y: -284, s: 0.65, r: 0, b: 8, t: 0.6, o: 0 };
-  const SPRING = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
-  const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)';
-  const EASE_IN = 'cubic-bezier(0.5, 0, 1, 0.6)';
-  const TRANSITION = `transform 0.76s ${SPRING}, filter 0.76s ${EASE_OUT}, opacity 0.76s ${EASE_OUT}`;
-
-  let order = RECORDS.map((_, i) => i);
-  let slots = [];
-  let k = 1;
-  let drag = null;
-  let suppressClick = false;
-  let lastStep = 0;
-
-  const T = (x, y, r, s) => `translate(${x}px, ${y}px) rotate(${r}deg) scale(${s})`;
-
-  function applyDepth(slot, d, { instant = false, delay = 0 } = {}) {
-    slot.style.transition = instant ? 'none' : TRANSITION;
-    slot.style.transitionDelay = delay ? `${delay}ms` : '';
-    slot.style.transform = T(0, d.y * k, d.r, d.s);
-    slot.style.filter = d.b ? `blur(${(d.b * k).toFixed(2)}px)` : 'none';
-    slot.style.opacity = d.o;
-    slot.style.setProperty('--tint', d.t);
-  }
-
-  function layout(opts = {}) {
-    order.forEach((ri, depth) => {
-      const slot = slots[ri];
-      if (slot.flying) return;
-      slot.style.zIndex = 10 - depth;
-      slot.classList.toggle('is-front', depth === 0);
-      const a = $('a.card', slot);
-      a.tabIndex = depth === 0 ? 0 : -1;
-      slot.setAttribute('aria-hidden', depth === 0 ? 'false' : 'true');
-      applyDepth(slot, DEPTHS[depth] || HIDDEN, { ...opts, delay: opts.stagger ? (DEPTHS.length - depth) * 70 : 0 });
-    });
-    $$('.dot', dotsEl).forEach((d, i) => d.setAttribute('aria-selected', String(i === order[0])));
-  }
-
-  function measure() {
-    k = stackEl.clientWidth / 720;
-  }
-
-  function buildStack() {
-    stackEl.innerHTML = '';
-    slots = RECORDS.map((rec, i) => {
-      const slot = document.createElement('div');
-      slot.className = 'slot';
-      slot.dataset.i = i;
-      slot.setAttribute('style', recVars(rec));
-      slot.setAttribute('role', 'group');
-      slot.setAttribute('aria-roledescription', 'slide');
-      slot.setAttribute('aria-label', `${i + 1} / ${RECORDS.length} · ${rec.title}`);
-      slot.innerHTML = cardHTML(rec, i);
-      stackEl.appendChild(slot);
-      return slot;
-    });
-    dotsEl.innerHTML = RECORDS.map((rec, i) =>
-      `<button class="dot" type="button" role="tab" data-i="${i}" aria-label="${esc(rec.title)}"></button>`).join('');
-
-    measure();
-    slots.forEach((s) => applyDepth(s, HIDDEN, { instant: true }));
-    void stackEl.offsetWidth;
-    layout({ stagger: !reduceMotion });
-    setTimeout(() => slots.forEach((s) => (s.style.transitionDelay = '')), 900);
-  }
-
-  // 맨 앞 카드를 dir 방향(1 = 오른쪽)으로 던지고 다음 카드를 앞으로
-  function next(dir = 1, from = null) {
-    const ri = order.shift();
-    order.push(ri);
-    const slot = slots[ri];
-    slot.flying = true;
-    slot.classList.remove('is-front');
-    slot.classList.add('is-flying');
-    slot.style.transition = 'none';
-    slot.style.zIndex = 30;
-
-    const out = T(1040 * k * dir, 60 * k, -20 * dir, 0.98);
-    const dur = reduceMotion ? 1 : 760;
-    const frames = from
-      ? [{ transform: from, easing: EASE_IN }, { transform: out }]
-      : [
-          { transform: T(0, 0, 0, 1), easing: EASE_OUT },
-          { transform: T(-34 * k * dir, -28 * k, -3 * dir, 1.05), offset: 0.237, easing: EASE_IN },
-          { transform: out },
-        ];
-    const fly = slot.animate(frames, { duration: from ? Math.min(dur, 480) : dur, fill: 'forwards' });
-    slot.animate([{ opacity: 1 }, { opacity: 1, offset: 0.84 }, { opacity: 0 }], { duration: from ? Math.min(dur, 480) : dur, fill: 'forwards' });
-
-    // 나머지 카드: wind-up이 끝날 즈음 한 칸씩 승격
-    setTimeout(() => layout(), from || reduceMotion ? 0 : 140);
-
-    fly.finished.then(() => {
-      slot.flying = false;
-      slot.classList.remove('is-flying');
-      applyDepth(slot, HIDDEN, { instant: true });
-      slot.getAnimations().forEach((a) => a.cancel());
-      void slot.offsetWidth;
-      layout();
-    });
-  }
-
-  // 맨 뒤 카드를 왼쪽에서 다시 앞으로
-  function prev() {
-    const ri = order.pop();
-    order.unshift(ri);
-    const slot = slots[ri];
-    slot.getAnimations().forEach((a) => a.cancel());
-    slot.flying = false;
-    slot.style.transition = 'none';
-    slot.style.transform = T(-1040 * k, 60 * k, 20, 0.98);
-    slot.style.opacity = 0;
-    slot.style.filter = 'none';
-    slot.style.zIndex = 20;
-    void slot.offsetWidth;
-    layout();
-    slot.style.transition = `transform 0.7s ${EASE_OUT}, opacity 0.35s ${EASE_OUT}`;
-  }
-
-  function step(fn) {
-    const now = performance.now();
-    if (now - lastStep < 260) return;
-    lastStep = now;
-    fn();
-  }
-
-  // 특정 앨범을 맨 앞으로 (점·뒷카드 클릭)
-  async function shuffleTo(ri) {
-    const n = (order.indexOf(ri) + RECORDS.length) % RECORDS.length;
-    if (n === 0) return;
-    const back = RECORDS.length - n;
-    const forward = n <= back;
-    for (let i = 0; i < (forward ? n : back); i++) {
-      forward ? next(1) : prev();
-      lastStep = performance.now();
-      await new Promise((r) => setTimeout(r, reduceMotion ? 0 : 220));
-    }
-  }
-
-  function setFront(ri) {
-    order = [...order.slice(order.indexOf(ri)), ...order.slice(0, order.indexOf(ri))];
-    slots.forEach((s) => { s.flying = false; s.classList.remove('is-flying'); s.getAnimations().forEach((a) => a.cancel()); });
-    layout({ instant: true });
-  }
-
-  /* 드래그 / 스와이프 */
-  stackEl.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    const slot = e.target.closest('.slot');
-    if (!slot || !slot.classList.contains('is-front')) return;
-    drag = { slot, id: e.pointerId, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, t0: performance.now(), moved: false };
-  });
-  window.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    drag.dx = e.clientX - drag.x0;
-    drag.dy = e.clientY - drag.y0;
-    if (!drag.moved) {
-      if (Math.abs(drag.dx) < 8 || Math.abs(drag.dx) < Math.abs(drag.dy)) {
-        if (Math.abs(drag.dy) > 12) drag = null; // 세로 스크롤 의도
-        return;
-      }
-      drag.moved = true;
-      drag.slot.setPointerCapture?.(drag.id);
-      drag.slot.style.transition = 'none';
-    }
-    drag.slot.style.transform = T(drag.dx, drag.dy * 0.18, drag.dx * 0.045, 1.02);
-  });
-  const endDrag = (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const { slot, dx, dy, t0, moved } = drag;
-    drag = null;
-    if (!moved) return;
-    suppressClick = true;
-    setTimeout(() => (suppressClick = false), 0);
-    const v = dx / Math.max(1, performance.now() - t0);
-    if (Math.abs(dx) > 200 * k || Math.abs(v) > 0.55) {
-      lastStep = performance.now();
-      next(Math.sign(dx) || 1, T(dx, dy * 0.18, dx * 0.045, 1.02));
-    } else {
-      slot.style.transition = `transform 0.55s ${SPRING}`;
-      slot.style.transform = T(0, 0, 0, 1);
-    }
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch { /* 저장 못 해도 게이트가 한 번 더 보일 뿐 */ } },
   };
-  window.addEventListener('pointerup', endDrag);
-  window.addEventListener('pointercancel', endDrag);
 
-  stackEl.addEventListener('click', (e) => {
-    const slot = e.target.closest('.slot');
-    if (!slot) return;
-    if (suppressClick) { e.preventDefault(); return; }
-    if (!slot.classList.contains('is-front')) {
-      e.preventDefault();
-      shuffleTo(Number(slot.dataset.i));
-    }
-  });
+  /* ───────────────────────── 아이콘 (손그림 느낌 SVG) ───────────────────────── */
+  const ICON_PATHS = {
+    sign: '<path d="M12 21v-9"/><path d="M5 5h14l-2 3.5 2 3.5H5z"/>',
+    stall: '<path d="M3 9l2-5h14l2 5"/><path d="M3 9c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3"/><path d="M5 12v8h14v-8"/>',
+    path: '<path d="M4 20c3.5 0 3.5-4 7-4s3.5 4 7 4" stroke-dasharray="2.5 3"/><path d="M6 10c3.5 0 3.5-4 7-4s3.5 4 7 4" stroke-dasharray="2.5 3"/>',
+    check: '<rect x="5" y="4" width="14" height="17" rx="2.5"/><path d="M9 3.5h6v3H9z"/><path d="M8.5 13l2.5 2.5 4.5-5"/>',
+    stage: '<path d="M9 17V6l10-2v11"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/>',
+    workshop: '<path d="M4 20l8.5-8.5"/><path d="M12 4.5l6 6-3 3-6-6z"/>',
+    mailbox: '<path d="M4 11a4 4 0 0 1 8 0v8H4z"/><path d="M12 11h8v8h-8"/><path d="M8 19v2.5"/><path d="M15 11V4h3"/>',
+    post: '<rect x="3" y="6" width="18" height="13" rx="2.5"/><path d="M3.5 8l8.5 6 8.5-6"/>',
+    sprout: '<path d="M12 21v-9"/><path d="M12 12C12 8 9 6 5 6c0 4 3 6 7 6z"/><path d="M12 10c0-3 2-5 6-5 0 3-2 5-6 5z"/>',
+    badge: '<circle cx="12" cy="9" r="5"/><path d="M9 13.5L7.5 21l4.5-2.5 4.5 2.5-1.5-7.5"/>',
+    signpost: '<path d="M12 3v18"/><path d="M12 5h7l2 2.5-2 2.5h-7"/><path d="M12 12H5l-2 2.5L5 17h7"/>',
+    house: '<path d="M4 11l8-7 8 7"/><path d="M6 9v11h12V9"/><path d="M10 20v-5h4v5"/>',
+    heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+    board: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M7 16l-1 5"/><path d="M17 16l1 5"/><path d="M8 8h8"/><path d="M8 12h5"/>',
+    map: '<path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14"/><path d="M15 6v14"/>',
+    leaf: '<path d="M5 19C5 10 10 5 19 5c0 9-5 14-14 14z"/><path d="M5 19l8-8"/>',
+    close: '<path d="M6 6l12 12"/><path d="M18 6L6 18"/>',
+    next: '<path d="M6 9l6 6 6-6"/>',
+    arrowL: '<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/>',
+    arrowR: '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
+  };
+  const icon = (name, size = 22) =>
+    `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name] || ICON_PATHS.sign}</svg>`;
 
-  let wheelAcc = 0;
-  stackEl.addEventListener('wheel', (e) => {
-    if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
-    e.preventDefault();
-    wheelAcc += e.deltaX;
-    if (Math.abs(wheelAcc) > 60) {
-      const d = Math.sign(wheelAcc);
-      wheelAcc = 0;
-      step(() => (d > 0 ? next(1) : prev()));
-    }
-  }, { passive: false });
+  const SECTION_ICON = {
+    notes: 'sign', tracklist: 'stall', structure: 'signpost', discs: 'signpost', common: 'sprout', bizcommon: 'signpost',
+    sequence: 'path', credits: 'check', capstone: 'stage', projects: 'workshop', md: 'badge', others: 'mailbox', contact: 'post',
+  };
 
-  $('#next').addEventListener('click', () => step(() => next(1)));
-  $('#prev').addEventListener('click', () => step(prev));
-  dotsEl.addEventListener('click', (e) => {
-    const d = e.target.closest('.dot');
-    if (d) shuffleTo(Number(d.dataset.i));
-  });
+  // data.js에 남은 LP 시절 섹션 제목 → 장소 아래 작은 글씨로 보일 이름
+  const ORIG_TITLE = { 'Liner Notes': '전공 소개', Tracklist: '인정 과목', '트랙 선택 · Discs': '트랙 선택' };
+
+  const village = (rec) => VILLAGES[rec.id] || { name: rec.title, char: null, theme: 'plaza', greet: [], places: {} };
+  const place = (rec, s) => {
+    const p = village(rec).places[s.id];
+    const [name, ic] = Array.isArray(p) ? p : [p || s.title, null];
+    return { name, icon: ic || SECTION_ICON[s.id] || 'sign' };
+  };
+  const charImg = (char, cls, alt = '') => (char
+    ? `<img class="${cls}" src="assets/chars/${char}.png" alt="${esc(alt)}" draggable="false">`
+    : `<span class="${cls} ${cls}--board" aria-hidden="true">${icon('board', 64)}</span>`);
+
+  /* ───────────────────────── 대화창 ───────────────────────── */
+  const DIALOG_HTML = `
+    <span class="dialog__name"></span>
+    <span class="dialog__text" aria-hidden="true"></span>
+    <span class="sr-only" aria-live="polite"></span>
+    <button class="dialog__next" type="button" aria-label="다음 대사">${icon('next', 18)}</button>`;
+
+  function mountDialog(el, script, { onLine } = {}) {
+    el.innerHTML = DIALOG_HTML;
+    const nameEl = $('.dialog__name', el);
+    const textEl = $('.dialog__text', el);
+    const srEl = $('.sr-only', el);
+    const nextEl = $('.dialog__next', el);
+    let i = 0;
+    let timer = 0;
+
+    const finish = () => {
+      clearInterval(timer);
+      textEl.textContent = script[i].text;
+      el.classList.remove('is-typing');
+    };
+    const show = (n) => {
+      i = n;
+      const line = script[i];
+      el.dataset.theme = line.theme;
+      nameEl.textContent = line.who;
+      srEl.textContent = `${line.who}: ${line.text}`;
+      nextEl.setAttribute('aria-label', i < script.length - 1 ? '다음 대사' : '처음 대사 다시 보기');
+      el.classList.toggle('is-last', i === script.length - 1);
+      onLine?.(line, i);
+      if (reduceMotion) { finish(); return; }
+      let k = 0;
+      textEl.textContent = '';
+      el.classList.add('is-typing');
+      clearInterval(timer);
+      timer = setInterval(() => {
+        textEl.textContent = line.text.slice(0, ++k);
+        if (k >= line.text.length) finish();
+      }, 28);
+    };
+    el.onclick = () => (el.classList.contains('is-typing') ? finish() : show((i + 1) % script.length));
+    show(0);
+    return { stop: () => clearInterval(timer) };
+  }
+
+  const greetScript = (rec) => village(rec).greet.map((g) => ({ ...g, text: g.text.replace('{tagline}', plain(rec.tagline)) }));
+
+  /* ───────────────────────── 입장 게이트 ───────────────────────── */
+  const GATE_KEY = 'aic-village-gate';
+  const GATE_SCRIPT = [
+    { ...CHARS.hachiware, who: CHARS.hachiware.name, char: 'hachiware', text: '어서 와, 손님! 여기는 AI융합학부 마을이야.' },
+    { ...CHARS.usagi, who: CHARS.usagi.name, char: 'usagi', text: '우라! 마을이 세 개나 있어! 하나씩 놀러 와~' },
+    { ...CHARS.chiikawa, who: CHARS.chiikawa.name, char: 'chiikawa', text: '……! (치이카와가 방문증을 건네준다)' },
+  ];
+  let gateDialog = null;
+
+  function openGate() {
+    $('#gate-friends').innerHTML = ['hachiware', 'chiikawa', 'usagi']
+      .map((c) => `<img class="friend" data-char="${c}" src="assets/chars/${c}.png" alt="" draggable="false">`).join('');
+    gateDialog = mountDialog($('#gate-dialog'), GATE_SCRIPT, {
+      onLine: (line) => $$('.friend', gateEl).forEach((f) => f.classList.toggle('is-talking', f.dataset.char === line.char)),
+    });
+    gateEl.hidden = false;
+    mapEl.inert = true;
+    document.body.classList.add('is-gate');
+    $('#gate-enter').focus({ preventScroll: true });
+  }
+  function closeGate() {
+    if (gateEl.hidden) return;
+    gateDialog?.stop();
+    store.set(GATE_KEY, '1');
+    gateEl.hidden = true;
+    mapEl.inert = false;
+    document.body.classList.remove('is-gate');
+    $('.map__title').focus({ preventScroll: true });
+  }
+  $('#gate-enter').addEventListener('click', closeGate);
+  $('#gate-again').addEventListener('click', openGate);
+
+  /* ───────────────────────── 섬 지도 ───────────────────────── */
+  const ISLAND_SVG = `
+    <svg class="island__art" viewBox="0 0 1000 640" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+      <defs>
+        <pattern id="waves" width="80" height="40" patternUnits="userSpaceOnUse">
+          <path d="M8 22c8-7 16-7 24 0s16 7 24 0" fill="none" stroke="#B9DCEA" stroke-width="3" stroke-linecap="round"/>
+        </pattern>
+      </defs>
+      <rect width="1000" height="640" fill="var(--water)"/>
+      <rect width="1000" height="640" fill="url(#waves)"/>
+      <path d="M118 112C230 30 770 22 884 104c86 70 92 360 6 440-96 86-660 92-770 8C30 482 28 182 118 112z" fill="var(--path)" stroke="var(--ink)" stroke-width="4"/>
+      <path d="M146 136C252 66 748 60 856 128c70 60 76 330 2 398-86 76-626 82-724 8C58 466 60 196 146 136z" fill="var(--grass)"/>
+      <!-- 마을 구역 -->
+      <ellipse cx="215" cy="215" rx="150" ry="104" fill="var(--hachi-tint)"/>
+      <ellipse cx="790" cy="215" rx="150" ry="104" fill="var(--usagi)"/>
+      <ellipse cx="500" cy="480" rx="190" ry="92" fill="var(--chii-tint)"/>
+      <!-- 강 + 다리 -->
+      <path d="M392 64c-30 90 34 140-6 230-36 82-120 120-150 300" fill="none" stroke="var(--water)" stroke-width="30" stroke-linecap="round"/>
+      <path d="M392 64c-30 90 34 140-6 230-36 82-120 120-150 300" fill="none" stroke="#B9DCEA" stroke-width="4" stroke-dasharray="10 14" stroke-linecap="round"/>
+      <!-- 길 -->
+      <g fill="none" stroke="var(--path)" stroke-width="16" stroke-linecap="round">
+        <path d="M480 300C420 270 330 240 250 230"/>
+        <path d="M520 300c60-30 150-60 240-70"/>
+        <path d="M500 330c0 50 0 90 0 120"/>
+      </g>
+      <rect x="352" y="246" width="54" height="26" rx="6" fill="#E9C99A" stroke="var(--ink)" stroke-width="3" transform="rotate(-14 379 259)"/>
+      <!-- 중앙 광장 -->
+      <ellipse cx="500" cy="310" rx="118" ry="62" fill="var(--path)" stroke="var(--ink)" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
+      <!-- 나무 -->
+      <g stroke="var(--ink)" stroke-width="3">
+        <g transform="translate(640 120)"><rect x="-4" y="10" width="8" height="18" fill="#B98A5E"/><circle r="22" fill="var(--grass-deep)"/></g>
+        <g transform="translate(690 150)"><rect x="-4" y="8" width="8" height="16" fill="#B98A5E"/><circle r="17" fill="var(--grass-deep)"/></g>
+        <g transform="translate(330 470)"><rect x="-4" y="10" width="8" height="18" fill="#B98A5E"/><circle r="20" fill="var(--grass-deep)"/></g>
+        <g transform="translate(700 470)"><rect x="-4" y="10" width="8" height="18" fill="#B98A5E"/><circle r="22" fill="var(--grass-deep)"/></g>
+        <g transform="translate(170 420)"><rect x="-4" y="8" width="8" height="16" fill="#B98A5E"/><circle r="16" fill="var(--grass-deep)"/></g>
+        <g transform="translate(860 380)"><rect x="-4" y="8" width="8" height="16" fill="#B98A5E"/><circle r="18" fill="var(--grass-deep)"/></g>
+      </g>
+      <!-- 풀 (치이카와 풀밭) -->
+      <g fill="none" stroke="var(--chii-ink)" stroke-width="3" stroke-linecap="round">
+        <path d="M400 520l4-12 4 12M420 528l3-9 3 9"/><path d="M580 522l4-12 4 12M600 530l3-9 3 9"/><path d="M460 548l3-9 3 9M540 552l3-9 3 9"/>
+      </g>
+      <!-- 꽃 -->
+      <g fill="var(--blush)" stroke="var(--ink)" stroke-width="2">
+        <circle cx="270" cy="330" r="7"/><circle cx="740" cy="330" r="7"/><circle cx="610" cy="400" r="6"/><circle cx="390" cy="390" r="6"/>
+      </g>
+    </svg>`;
+
+  const PIN_NOTE = { school: '학부 소개', events: '행사 소식' };
+  const pinNote = (rec) => PIN_NOTE[rec.id] || `${rec.card.title} 전공`;
+
+  function buildMap() {
+    const pins = RECORDS.map((rec) => {
+      const v = village(rec);
+      if (!v.pin) return '';
+      return `
+        <a class="pin${v.char ? '' : ' pin--board'}" href="#/${rec.id}" data-rec="${rec.id}" data-theme="${v.theme}"
+           style="left:${v.pin[0]}%;top:${v.pin[1]}%" aria-label="${esc(v.name)} — ${esc(rec.title)}">
+          ${charImg(v.char, 'pin__char')}
+          <span class="pin__label" aria-hidden="true"><b>${esc(v.name)}</b><small>${esc(pinNote(rec))}</small></span>
+        </a>`;
+    }).join('');
+    $('#island').innerHTML = ISLAND_SVG + pins;
+
+    $('#village-list').innerHTML = `<ul>${RECORDS.map((rec) => {
+      const v = village(rec);
+      return `
+        <li><a class="vcard" href="#/${rec.id}" data-theme="${v.theme}">
+          <span class="vcard__art">${charImg(v.char, 'vcard__char')}</span>
+          <span class="vcard__body"><b>${esc(v.name)}</b><small>${esc(rec.title)} · ${esc(rec.en)}</small></span>
+          ${icon('arrowR', 20)}
+        </a></li>`;
+    }).join('')}</ul>`;
+  }
 
   document.addEventListener('keydown', (e) => {
     if (e.target.closest('input, textarea')) return;
-    if (!crateEl.hidden) {
-      if (e.key === 'ArrowRight') { e.preventDefault(); step(() => next(1)); }
-      if (e.key === 'ArrowLeft') { e.preventDefault(); step(prev); }
-    } else if (e.key === 'Escape') {
-      if (!playerEl.hidden) closePlayer();
-      else location.hash = '#/';
-    }
-  });
-
-  let resizeT;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeT);
-    resizeT = setTimeout(() => { measure(); layout({ instant: true }); }, 80);
+    if (e.key !== 'Escape') return;
+    if (!gateEl.hidden) closeGate();
+    else if (!playerEl.hidden) closePlayer();
+    else if (!albumEl.hidden) location.hash = '#/';
   });
 
   /* ───────────────────────── 과목 정보 ───────────────────────── */
@@ -324,24 +264,24 @@
     : `<li>${md(it.text)}${it.sub ? `<ul>${it.sub.map((s) => `<li>${md(s)}</li>`).join('')}</ul>` : ''}</li>`);
 
   function renderTracks(b) {
-    const groups = b.groups.map((g, gi) => {
+    const groups = b.groups.map((g) => {
       const items = g.items.map(course).filter(Boolean);
       const total = items.reduce((a, t) => a + t.cr, 0);
-      const rows = items.map((t, ti) => {
+      const rows = items.map((t) => {
         const id = registry.push(t) - 1;
         return `
-          <li class="track" tabindex="0" role="button" data-t="${id}" aria-label="${esc(t.ko)} 과목 정보 보기">
-            <span class="track__n"><span class="num">${pad(ti + 1)}</span><span class="play" aria-hidden="true">▶</span><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span></span>
+          <li class="track" tabindex="0" role="button" data-t="${id}" aria-label="${esc(t.ko)} 과목 카드 보기">
+            <span class="track__icon" aria-hidden="true">${icon('leaf', 18)}</span>
             <span class="track__name"><span class="track__ko">${esc(t.ko)}</span>${t.en && t.en !== t.ko ? `<span class="track__en">${esc(t.en)}</span>` : ''}</span>
             <span class="track__side">${badges(t)}<span class="track__when">${esc(when(t))}</span><span class="track__code">${esc(t.code)}</span></span>
-            <span class="track__dur">${t.cr}:00</span>
+            <span class="track__dur">${t.cr}학점</span>
           </li>`;
       }).join('');
       return `
         <div class="tl-group">
           <div class="tl-group__head">
-            <span class="tl-group__name"><i>SIDE ${String.fromCharCode(65 + gi)}</i>${esc(g.name)}</span>
-            <span class="tl-group__meta">${items.length} tracks · ${total}:00</span>
+            <span class="tl-group__name">${esc(g.name)}</span>
+            <span class="tl-group__meta">${items.length}과목 · ${total}학점</span>
           </div>
           <ol class="tracks">${rows}</ol>
         </div>`;
@@ -392,12 +332,13 @@
     return `<span class="flow__group${st.join ? ' flow__group--inline' : ''}">${inner}${st.caption ? `<span class="flow__cap">${esc(st.caption)}</span>` : ''}</span>`;
   }
 
+  // 우사기 마을: 다섯 갈래 길 이정표
   function renderDiscs(b, rec, discId) {
     const cur = b.discs.find((d) => d.id === discId) || b.discs[0];
     const tabs = b.discs.map((d, i) => `
       <button class="disc-tab" type="button" role="tab" data-disc="${d.id}" aria-selected="${d.id === cur.id}" style="--dc:${d.color}">
-        <span class="disc-tab__disc"></span>
-        <span><b>Disc ${i + 1} · ${esc(d.name)}</b><small>${esc(d.en)}</small></span>
+        <span class="disc-tab__dot" aria-hidden="true"></span>
+        <span><b>길 ${i + 1} · ${esc(d.name)}</b><small>${esc(d.en)}</small></span>
       </button>`).join('');
     return `
       <div class="discs" data-rec="${rec.id}">
@@ -419,10 +360,11 @@
       case 'table': return `<div class="table-wrap"><table><thead><tr>${b.head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${b.rows.map((r) => `<tr>${r.map((c) => `<td>${md(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
       case 'cards': return `<div class="cards${b.compact ? ' cards--compact' : ''}">${b.items.map((c) => {
         const target = c.href && RECORDS.find((r) => `#/${r.id}` === c.href);
+        const tv = target && village(target);
         const tag = c.href ? 'a' : 'div';
-        const style = target ? ` style="--cg1:${target.grad[0]};--cg2:${target.grad[1]}"` : '';
-        return `<${tag} class="info-card"${c.href ? ` href="${c.href}"` : ''}${style}>
-          ${c.href ? '<span class="info-card__go" aria-hidden="true">↗</span>' : ''}
+        return `<${tag} class="info-card${tv ? ' info-card--village' : ''}"${c.href ? ` href="${c.href}"` : ''}${tv ? ` data-theme="${tv.theme}"` : ''}>
+          ${tv?.char ? `<img class="info-card__char" src="assets/chars/${tv.char}.png" alt="" draggable="false">` : ''}
+          ${tv ? `<span class="info-card__go">${esc(tv.name)} ${icon('arrowR', 16)}</span>` : ''}
           ${c.kicker ? `<div class="info-card__kicker">${esc(c.kicker)}</div>` : ''}
           ${c.title ? `<div class="info-card__title">${esc(c.title)}</div>` : ''}
           ${c.sub ? `<div class="info-card__sub">${esc(c.sub)}</div>` : ''}
@@ -441,18 +383,19 @@
   function eventsSection(rec) {
     const list = rec.events || [];
     const body = list.length
-      ? `<div class="tracklist"><div class="tl-group"><div class="tl-group__head"><span class="tl-group__name"><i>SIDE B</i>학부 행사</span><span class="tl-group__meta">${list.length} tracks</span></div>
-          <ol class="tracks">${list.map((ev, i) => `
-            <li class="track"><span class="track__n"><span class="num">${pad(i + 1)}</span></span>
+      ? `<div class="tracklist"><div class="tl-group"><div class="tl-group__head"><span class="tl-group__name">학부 행사</span><span class="tl-group__meta">${list.length}개</span></div>
+          <ol class="tracks">${list.map((ev) => `
+            <li class="track track--event"><span class="track__icon" aria-hidden="true">${icon('board', 18)}</span>
               <span class="track__name"><span class="track__ko">${esc(ev.title)}</span>${ev.desc ? `<span class="track__en">${esc(ev.desc)}</span>` : ''}</span>
               <span class="track__side">${ev.tag ? `<span class="badge">${esc(ev.tag)}</span>` : ''}${ev.place ? `<span class="track__when">${esc(ev.place)}</span>` : ''}</span>
               <span class="track__dur">${esc(ev.date || '')}</span></li>`).join('')}</ol></div></div>`
-      : `<div class="empty"><div class="empty__disc" aria-hidden="true"></div><h3>Coming Soon</h3><p>학부 행사 소식이 준비되는 대로 이 B-Side에 트랙이 추가됩니다.</p></div>`;
-    return [{ id: 'tracklist', side: 'A1', title: 'Tracklist', html: body }];
+      : `<div class="empty"><div class="empty__note" aria-hidden="true"><i></i></div><h3>아직 붙은 공지가 없어요</h3><p>학부 행사 소식이 준비되는 대로 이 게시판에 붙을 거예요.</p></div>`;
+    return [{ id: 'tracklist', side: 'A1', title: '학부 행사', html: body }];
   }
 
-  /* ───────────────────────── 앨범 상세 ───────────────────────── */
+  /* ───────────────────────── 마을 페이지 ───────────────────────── */
   let spy;
+  let villageDialog = null;
 
   function countTracks(rec) {
     const codes = new Set();
@@ -464,70 +407,103 @@
     return codes.size;
   }
 
+  const floorOf = (rec, s) => village(rec).floors?.[s.side[0]];
+
   function renderAlbum(ri, disc) {
     const rec = RECORDS[ri];
+    const v = village(rec);
     registry = [];
+    villageDialog?.stop();
     const sections = rec.sections.length ? rec.sections : eventsSection(rec);
     const nTracks = countTracks(rec);
     const firstTracks = sections.find((s) => s.blocks?.some((b) => b.t === 'tracks'));
     const seqSection = sections.find((s) => s.blocks?.some((b) => b.t === 'timeline'));
     const prevRec = RECORDS[(ri - 1 + RECORDS.length) % RECORDS.length];
     const nextRec = RECORDS[(ri + 1) % RECORDS.length];
+    const neighbor = (r, dir) => {
+      const nv = village(r);
+      return `<a class="neighbor${dir > 0 ? ' neighbor--next' : ''}" href="#/${r.id}" data-theme="${nv.theme}">
+        <span class="neighbor__art">${charImg(nv.char, 'neighbor__char')}</span>
+        <span><small>${dir > 0 ? '옆 마을로 →' : '← 옆 마을로'}</small><b>${esc(nv.name)}</b><small>${esc(r.title)}</small></span></a>`;
+    };
 
-    albumEl.setAttribute('style', recVars(rec));
+    albumEl.dataset.theme = v.theme;
     albumEl.innerHTML = `
       <div class="album__bar">
-        <a class="pill" href="#/">← 앨범 목록</a>
-        <span class="catalog">${esc(rec.catalog)} · 2026-2</span>
+        <a class="btn" href="#/">${icon('map', 18)}섬 지도</a>
+        <span class="catalog">${esc(rec.title)} · 2026-2 요람</span>
       </div>
 
       <header class="hero">
-        <div class="hero__art is-loading">
-          <div class="slot" style="${recVars(rec)}">${cardHTML(rec, ri, { tag: 'div' })}</div>
+        <div class="hero__art">
+          <div class="hero__ground" aria-hidden="true"></div>
+          ${charImg(v.char, 'hero__char', v.char && v.char !== 'trio' ? `인사하는 ${CHARS[v.char].name}` : '')}
         </div>
         <div class="hero__info">
           <div class="hero__kicker">
-            <span class="tag">${esc(rec.vol)}</span><span class="tag">${esc(rec.kind)}</span>${nTracks ? `<span class="tag">${nTracks} Tracks</span>` : ''}
+            <span class="tag">${esc(v.kind || rec.kind)}</span>${nTracks ? `<span class="tag">과목 ${nTracks}개</span>` : ''}
           </div>
-          <h1>${esc(rec.title)}</h1>
-          <p class="hero__en">${esc(rec.en)}<span>${esc(rec.artist)}</span></p>
-          <p class="hero__tagline">${md(rec.tagline)}</p>
+          <h1>${esc(v.name)}</h1>
+          <p class="hero__en">${esc(rec.title)} · ${esc(rec.en)}</p>
+          ${v.greet.length ? '<div class="dialog" id="village-dialog"></div>' : `<p class="hero__tagline">${md(rec.tagline)}</p>`}
           ${rec.stats.length ? block({ t: 'stats', items: rec.stats }, rec) : ''}
           <div class="hero__actions">
-            ${firstTracks ? `<button class="pill pill--solid" type="button" data-play="${firstTracks.id}">▶ 트랙리스트 재생</button>` : ''}
-            ${seqSection ? `<button class="pill" type="button" data-jump="${seqSection.id}">이수 체계 보기</button>` : ''}
+            ${firstTracks ? `<button class="btn btn--solid" type="button" data-play="${firstTracks.id}">${icon('leaf', 18)}과목 둘러보기</button>` : ''}
+            ${seqSection ? `<button class="btn" type="button" data-jump="${seqSection.id}">${icon('path', 18)}${esc(place(rec, seqSection).name)}</button>` : ''}
           </div>
         </div>
       </header>
 
       ${sections.length > 1 ? `
-      <nav class="album__nav" aria-label="앨범 구성">
-        <ul>${sections.map((s) => `<li><a href="#/${rec.id}" data-jump="${s.id}"><b>${esc(s.side)}</b>${esc(s.title)}</a></li>`).join('')}</ul>
+      <nav class="album__nav" aria-label="마을 안내도">
+        <a class="album__map" href="#/" aria-label="섬 지도로 돌아가기">${icon('map', 18)}</a>
+        <ul>${sections.map((s) => `<li><a href="#/${rec.id}" data-jump="${s.id}">${icon(place(rec, s).icon, 16)}${esc(place(rec, s).name)}</a></li>`).join('')}</ul>
       </nav>` : ''}
 
-      ${sections.map((s) => `
-        <section class="side" id="sec-${s.id}">
+      ${sections.map((s) => {
+        const p = place(rec, s);
+        const floor = floorOf(rec, s);
+        const orig = ORIG_TITLE[s.title] || s.title;
+        const lead = v.leads?.[s.id] || s.lead;
+        return `
+        <section class="side" id="sec-${s.id}" aria-labelledby="h-${s.id}">
           <div class="side__head">
-            <span class="side__no">${esc(s.side)}</span>
-            <h2>${esc(s.title)}</h2>
-            ${s.lead ? `<p class="side__lead">${md(s.lead)}</p>` : ''}
+            <span class="side__icon" aria-hidden="true">${icon(p.icon, 26)}</span>
+            <div>
+              ${floor ? `<span class="side__floor">${esc(floor)}</span>` : ''}
+              <h2 id="h-${s.id}">${esc(p.name)}</h2>
+              ${p.name !== orig ? `<p class="side__orig">${esc(orig)}</p>` : ''}
+            </div>
+            ${lead ? `<p class="side__lead">${md(lead)}</p>` : ''}
           </div>
           ${s.html || s.blocks.map((b) => block(b, rec, { disc })).join('')}
-        </section>`).join('')}
+        </section>`;
+      }).join('')}
 
-      <nav class="album__next" aria-label="다른 앨범">
-        <a class="neighbor" href="#/${prevRec.id}" style="--ng1:${prevRec.grad[0]};--ng2:${prevRec.grad[1]}"><span class="neighbor__sw"></span><span><small>← 이전 앨범</small><b>${esc(prevRec.title)}</b></span></a>
-        <a class="neighbor neighbor--next" href="#/${nextRec.id}" style="--ng1:${nextRec.grad[0]};--ng2:${nextRec.grad[1]}"><span class="neighbor__sw"></span><span><small>다음 앨범 →</small><b>${esc(nextRec.title)}</b></span></a>
-      </nav>
+      <nav class="album__next" aria-label="옆 마을">${neighbor(prevRec, -1)}${neighbor(nextRec, 1)}</nav>
       <p class="album__foot">2026-2 AI융합학부 요람 기준 · 본 지침은 변경될 수 있으니 수강 신청 시 반드시 HISNet에서 확인하세요.</p>`;
 
-    requestAnimationFrame(() => requestAnimationFrame(() => $('.hero__art', albumEl)?.classList.remove('is-loading')));
+    const dlg = $('#village-dialog', albumEl);
+    if (dlg) villageDialog = mountDialog(dlg, greetScript(rec));
     setupSpy();
+    if (!reduceMotion) revealSides();
+  }
+
+  // 장소 카드: 스크롤로 들어올 때 차례로 등장
+  let revealer;
+  function revealSides() {
+    revealer?.disconnect();
+    revealer = new IntersectionObserver((entries) => entries.forEach((en) => {
+      if (!en.isIntersecting) return;
+      en.target.classList.add('is-in');
+      revealer.unobserve(en.target);
+    }), { rootMargin: '0px 0px -8% 0px' });
+    $$('.side', albumEl).forEach((s) => { s.classList.add('will-reveal'); revealer.observe(s); });
   }
 
   function setupSpy() {
     spy?.disconnect();
-    const links = $$('.album__nav a', albumEl);
+    const links = $$('.album__nav li a', albumEl);
     if (!links.length) return;
     spy = new IntersectionObserver((entries) => {
       entries.forEach((en) => {
@@ -582,7 +558,7 @@
     if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); play(tr); }
   });
 
-  /* ───────────────────────── 플레이어 ───────────────────────── */
+  /* ───────────────────────── 아이템 카드 (과목 상세) ───────────────────────── */
   let playing = null;
 
   function play(tr) {
@@ -595,11 +571,12 @@
     const hours = t.th != null ? `<span class="badge">이론 ${t.th} · 실습 ${t.lab}</span>` : '';
     const lang = t.eng === 1 ? '<span class="badge badge--en">영어강의</span>' : t.eng === 0 ? '<span class="badge">한국어 강의</span>' : '';
     const panel = tr.closest('.disc-panel');
-    const dc = panel?.style.getPropertyValue('--dc');
-    playerEl.setAttribute('style', panel ? `--g1:${dc};--g2:${dc}` : albumEl.getAttribute('style'));
+    playerEl.dataset.theme = albumEl.dataset.theme;
+    playerEl.style.cssText = panel ? `--v-fill:${panel.style.getPropertyValue('--dc')}` : '';
     playerEl.innerHTML = `
-      <div class="player__disc" aria-hidden="true"></div>
+      <div class="player__icon" aria-hidden="true">${icon('leaf', 26)}</div>
       <div>
+        <div class="player__kicker">과목 카드를 확인했다!</div>
         <div class="player__title">${esc(t.ko)}</div>
         ${t.en && t.en !== t.ko ? `<div class="player__en">${esc(t.en)}</div>` : ''}
         <div class="player__meta">
@@ -608,7 +585,7 @@
         ${rec.length ? `<div class="player__rec">인정 전공 ${rec.map((r) => `<span class="badge${r.cond ? ' badge--cond' : ''}">${esc(r.l)}${r.req ? ' · 전공필수' : ''}${r.cond ? ' △' : ''}</span>`).join('')}</div>` : ''}
         ${t.note ? `<div class="player__note">${esc(t.note)}</div>` : ''}
       </div>
-      <button class="player__close" type="button" aria-label="닫기">✕</button>`;
+      <button class="player__close" type="button" aria-label="닫기">${icon('close', 18)}</button>`;
     playerEl.hidden = false;
   }
 
@@ -619,16 +596,18 @@
   }
   playerEl.addEventListener('click', (e) => { if (e.target.closest('.player__close')) closePlayer(); });
 
-  /* ───────────────────────── 라우터 ───────────────────────── */
+  /* ───────────────────────── 라우터 ─────────────────────────
+     지도 핀의 캐릭터 ↔ 마을 히어로 캐릭터를 View Transition으로 이어 줌 */
   let view = null;
   let currentAlbum = -1;
 
-  function transition(fn, name) {
+  function transition(fn) {
     if (!document.startViewTransition || reduceMotion || view === null) { fn(); return; }
     document.startViewTransition(fn).finished.finally(() => {
       $$('[style*="view-transition-name"]').forEach((el) => (el.style.viewTransitionName = ''));
     });
   }
+  const pinChar = (ri) => $(`.pin[data-rec="${RECORDS[ri].id}"] .pin__char`, mapEl);
 
   function route() {
     const m = location.hash.match(/^#\/([\w-]+)(?:\/([\w-]+))?/);
@@ -636,43 +615,44 @@
     closePlayer();
 
     if (ri >= 0) {
-      const fromCrate = view === 'crate';
-      if (fromCrate) slots[ri].style.viewTransitionName = 'sleeve';
+      closeGate();
+      const fromMap = view === 'map';
+      const pc = fromMap && pinChar(ri);
+      if (pc) pc.style.viewTransitionName = 'villager';
       transition(() => {
-        if (fromCrate) slots[ri].style.viewTransitionName = '';
-        crateEl.hidden = true;
+        if (pc) pc.style.viewTransitionName = '';
+        mapEl.hidden = true;
         albumEl.hidden = false;
         document.body.classList.add('is-album');
         renderAlbum(ri, m[2]);
         currentAlbum = ri;
-        const heroSlot = $('.hero__art .slot', albumEl);
-        if (fromCrate && heroSlot) { heroSlot.style.viewTransitionName = 'sleeve'; heroSlot.style.animation = 'none'; }
+        const hc = $('.hero__char', albumEl);
+        if (pc && hc) hc.style.viewTransitionName = 'villager';
         window.scrollTo(0, 0);
-        document.title = `${RECORDS[ri].title} · AI융합학부 Records`;
+        document.title = `${village(RECORDS[ri]).name} · AI융합학부 마을`;
       });
       view = 'album';
     } else {
       const prevRi = view === 'album' ? currentAlbum : -1;
-      const heroSlot = $('.hero__art .slot', albumEl);
-      if (prevRi >= 0 && heroSlot) heroSlot.style.viewTransitionName = 'sleeve';
+      const hc = $('.hero__char', albumEl);
+      if (prevRi >= 0 && hc) hc.style.viewTransitionName = 'villager';
       transition(() => {
-        if (heroSlot) heroSlot.style.viewTransitionName = '';
+        if (hc) hc.style.viewTransitionName = '';
+        villageDialog?.stop();
         albumEl.hidden = true;
-        crateEl.hidden = false;
+        mapEl.hidden = false;
         document.body.classList.remove('is-album');
-        measure();
-        if (prevRi >= 0) {
-          setFront(prevRi);
-          slots[prevRi].style.viewTransitionName = 'sleeve';
-        }
+        const pc = prevRi >= 0 && pinChar(prevRi);
+        if (pc) pc.style.viewTransitionName = 'villager';
         window.scrollTo(0, 0);
-        document.title = 'AI융합학부 Records';
+        document.title = 'AI융합학부 마을';
       });
-      view = 'crate';
+      if (view === null && !store.get(GATE_KEY)) openGate();
+      view = 'map';
     }
   }
 
-  buildStack();
+  buildMap();
   window.addEventListener('hashchange', route);
   route();
 })();

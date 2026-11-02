@@ -1,0 +1,10 @@
+{
+  "name": "aiconv-introduction",
+  "private": true,
+  "scripts": {
+    "dev": "vite --open"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
+  }
+}
