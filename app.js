@@ -610,6 +610,10 @@
   const pinChar = (ri) => $(`.pin[data-rec="${RECORDS[ri].id}"] .pin__char`, mapEl);
 
   function route() {
+    // #/lp, #/lp/ge → 레코드판 버전(lp/)의 같은 페이지로
+    const lp = location.hash.match(/^#\/lp(\/.*)?$/);
+    if (lp) { location.replace(`lp/#${lp[1] || '/'}`); return; }
+
     const m = location.hash.match(/^#\/([\w-]+)(?:\/([\w-]+))?/);
     const ri = m ? RECORDS.findIndex((r) => r.id === m[1]) : -1;
     closePlayer();

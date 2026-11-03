@@ -9,6 +9,17 @@
 | 치이카와 풀밭 | 데이터 사이언스 전공 | 치이카와 |
 | 마을 안내소 · 광장 게시판 | 학부 소개 · 학부 행사 | 세 친구 |
 
+## 주소
+
+| 주소 | 버전 |
+| --- | --- |
+| `/` | 먼작귀 마을 (기본) |
+| `/lp/` | LP판 레코드 (이전 디자인) |
+
+- 두 버전은 같은 `data.js`를 씁니다. 내용은 한 곳만 고치면 둘 다 바뀝니다.
+- 각 버전 안의 페이지는 해시로 나뉩니다: `/#/ge`, `/lp/#/ge`
+- 마을 버전에서 `#/lp/…`로 들어오면 레코드판의 같은 페이지로 넘어갑니다. (`/#/lp/ai` → `/lp/#/ai`)
+
 - 빌드 없음 — `index.html`을 브라우저로 열면 됩니다. (GitHub Pages 등 정적 호스팅 그대로 가능)
 - 개발 서버: `npm install` 후 `npm run dev` (Vite, 저장하면 자동 새로고침)
 - 디자인 기준: [`design-system/chiikawa-village/MASTER.md`](design-system/chiikawa-village/MASTER.md)
@@ -23,6 +34,7 @@
 | `app.js` | 입장 게이트, 섬 지도, 라우팅(`#/ge`, `#/ai/ict` …), 마을 페이지 렌더링 |
 | `styles.css` | 스타일 |
 | `assets/chars/` | 캐릭터 이미지 (투명 배경 PNG) |
+| `lp/` | LP판 버전 (`index.html` · `app.js` · `styles.css` · `assets/`) — `../data.js`를 함께 씀 |
 
 > 캐릭터 이미지는 먼작귀(ちいかわ) 저작물입니다. 공개 URL로 배포하기 전에 사용 범위를 확인하세요.
 

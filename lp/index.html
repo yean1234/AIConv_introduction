@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AI융합학부 Records</title>
+  <meta name="description" content="한동대학교 AI융합학부 전공 소개 — GE · AI융합 · 데이터 사이언스 전공을 LP 앨범처럼 넘겨보세요.">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="glow glow--violet" aria-hidden="true"><img src="assets/glow-violet.svg" alt=""></div>
+  <div class="glow glow--gold" aria-hidden="true"><img src="assets/glow-gold.svg" alt=""></div>
+
+  <!-- 1) 크레이트: LP 카드 셔플 -->
+  <main id="crate" class="crate">
+    <header class="crate__head">
+      <p class="eyebrow">HANDONG · AI CONVERGENCE RECORDS</p>
+      <h1 class="crate__title">전공을 한 장씩<br>넘겨보세요</h1>
+    </header>
+
+    <section class="stack" id="stack" aria-roledescription="carousel" aria-label="전공 앨범">
+      <!-- app.js가 카드를 채웁니다 -->
+    </section>
+
+    <div class="crate__controls">
+      <button class="round-btn" id="prev" type="button" aria-label="이전 앨범">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="dots" id="dots" role="tablist" aria-label="앨범 선택"></div>
+      <button class="round-btn" id="next" type="button" aria-label="다음 앨범">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <p class="crate__hint">옆으로 넘겨 고르고, 카드를 눌러 앨범을 열어보세요 · <a href="../">마을 버전으로 보기</a></p>
+  </main>
+
+  <!-- 2) 앨범 상세 -->
+  <article id="album" class="album" hidden></article>
+
+  <!-- 과목 상세 플레이어 -->
+  <aside id="player" class="player" hidden aria-live="polite"></aside>
+
+  <script src="../data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
