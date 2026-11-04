@@ -378,6 +378,7 @@ a { color: inherit; }
 .vcard b { display: block; font-family: var(--hand); font-size: 22px; line-height: 1.2; }
 .vcard small { display: block; font-size: 13px; color: var(--ink-soft); word-break: keep-all; }
 .map__foot { margin: 24px 0 0; text-align: center; }
+.site-note { max-width: 62ch; margin: 20px auto 0; text-align: center; font-size: 12px; line-height: 1.6; color: var(--ink-soft); word-break: keep-all; text-wrap: balance; }
 
 @media (max-width: 640px) {
   .island { aspect-ratio: 4 / 3.4; border-radius: 26px; }

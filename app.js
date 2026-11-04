@@ -481,7 +481,8 @@
       }).join('')}
 
       <nav class="album__next" aria-label="옆 마을">${neighbor(prevRec, -1)}${neighbor(nextRec, 1)}</nav>
-      <p class="album__foot">2026-2 AI융합학부 요람 기준 · 본 지침은 변경될 수 있으니 수강 신청 시 반드시 HISNet에서 확인하세요.</p>`;
+      <p class="album__foot">2026-2 AI융합학부 요람 기준 · 본 지침은 변경될 수 있으니 수강 신청 시 반드시 HISNet에서 확인하세요.</p>
+      <p class="site-note">${esc($('#site-note').textContent)}</p>`;
 
     const dlg = $('#village-dialog', albumEl);
     if (dlg) villageDialog = mountDialog(dlg, greetScript(rec));
