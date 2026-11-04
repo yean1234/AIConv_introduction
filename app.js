@@ -380,18 +380,52 @@
     }
   }
 
+  // 광장 게시판: data.js events의 group별로 장소 하나씩
+  const EVENT_GROUPS = [
+    { id: 'done', title: '이번 학기 진행한 행사', state: '다녀왔어요', icon: 'check', empty: '아직 다녀온 행사가 없어요.' },
+    { id: 'soon', title: '곧 진행할 행사', state: '곧 열려요', icon: 'board', empty: '곧 열릴 행사가 붙을 거예요.' },
+    { id: 'plan', title: '추진계획', state: '준비 중', icon: 'sprout', empty: '준비 중인 계획이 붙을 거예요.' },
+  ];
+
+  // day('YYYY-MM-DD')가 있으면 오늘 기준 D-day
+  function dDay(day) {
+    if (!day) return '';
+    const [y, m, d] = day.split('-').map(Number);
+    const now = new Date();
+    const diff = Math.round((new Date(y, m - 1, d) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5);
+    return diff > 0 ? `D-${diff}` : diff === 0 ? '오늘' : '지났어요';
+  }
+
+  function notice(ev, g) {
+    const dd = dDay(ev.day);
+    return `
+      <li class="notice notice--${g.id}">
+        <span class="notice__pin" aria-hidden="true"></span>
+        <p class="notice__when">${esc(ev.date || '')}</p>
+        <h3 class="notice__title">${esc(ev.title)}</h3>
+        ${ev.desc ? `<p class="notice__desc">${esc(ev.desc)}</p>` : ''}
+        <div class="notice__meta">
+          <span class="notice__state">${g.id === 'done' ? icon('check', 14) : ''}${esc(dd || g.state)}</span>
+          ${ev.tag ? `<span class="badge">${esc(ev.tag)}</span>` : ''}
+          ${ev.place ? `<span class="notice__place">${icon('house', 14)}${esc(ev.place)}</span>` : ''}
+        </div>
+      </li>`;
+  }
+
   function eventsSection(rec) {
     const list = rec.events || [];
-    const body = list.length
-      ? `<div class="tracklist"><div class="tl-group"><div class="tl-group__head"><span class="tl-group__name">학부 행사</span><span class="tl-group__meta">${list.length}개</span></div>
-          <ol class="tracks">${list.map((ev) => `
-            <li class="track track--event"><span class="track__icon" aria-hidden="true">${icon('board', 18)}</span>
-              <span class="track__name"><span class="track__ko">${esc(ev.title)}</span>${ev.desc ? `<span class="track__en">${esc(ev.desc)}</span>` : ''}</span>
-              <span class="track__side">${ev.tag ? `<span class="badge">${esc(ev.tag)}</span>` : ''}${ev.place ? `<span class="track__when">${esc(ev.place)}</span>` : ''}</span>
-              <span class="track__dur">${esc(ev.date || '')}</span></li>`).join('')}</ol></div></div>`
-      : `<div class="empty"><div class="empty__note" aria-hidden="true"><i></i></div><h3>아직 붙은 공지가 없어요</h3><p>학부 행사 소식이 준비되는 대로 이 게시판에 붙을 거예요.</p></div>`;
-    return [{ id: 'tracklist', side: 'A1', title: '학부 행사', html: body }];
+    return EVENT_GROUPS.map((g) => {
+      const items = list.filter((ev) => ev.group === g.id);
+      const html = items.length
+        ? `<ul class="board" role="list">${items.map((ev) => notice(ev, g)).join('')}</ul>`
+        : `<div class="empty"><div class="empty__note" aria-hidden="true"><i></i></div><p>${esc(g.empty)}</p></div>`;
+      return { id: g.id, side: 'A', title: g.title, html };
+    });
   }
+
+  const eventStats = (rec) => EVENT_GROUPS.map((g) => ({
+    v: String((rec.events || []).filter((ev) => ev.group === g.id).length), u: '개', k: g.title,
+  }));
 
   /* ───────────────────────── 마을 페이지 ───────────────────────── */
   let spy;
@@ -415,6 +449,7 @@
     registry = [];
     villageDialog?.stop();
     const sections = rec.sections.length ? rec.sections : eventsSection(rec);
+    const stats = rec.stats.length ? rec.stats : rec.events ? eventStats(rec) : [];
     const nTracks = countTracks(rec);
     const firstTracks = sections.find((s) => s.blocks?.some((b) => b.t === 'tracks'));
     const seqSection = sections.find((s) => s.blocks?.some((b) => b.t === 'timeline'));
@@ -446,7 +481,7 @@
           <h1>${esc(v.name)}</h1>
           <p class="hero__en">${esc(rec.title)} · ${esc(rec.en)}</p>
           ${v.greet.length ? '<div class="dialog" id="village-dialog"></div>' : `<p class="hero__tagline">${md(rec.tagline)}</p>`}
-          ${rec.stats.length ? block({ t: 'stats', items: rec.stats }, rec) : ''}
+          ${stats.length ? block({ t: 'stats', items: stats }, rec) : ''}
           <div class="hero__actions">
             ${firstTracks ? `<button class="btn btn--solid" type="button" data-play="${firstTracks.id}">${icon('leaf', 18)}과목 둘러보기</button>` : ''}
             ${seqSection ? `<button class="btn" type="button" data-jump="${seqSection.id}">${icon('path', 18)}${esc(place(rec, seqSection).name)}</button>` : ''}

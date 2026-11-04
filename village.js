@@ -122,11 +122,17 @@ const VILLAGES = {
     char: null,
     theme: 'plaza',
     pin: [60, 49],
+    kind: '26-2 학부 소식',
     greet: [
-      say('hachiware', '광장 게시판이야! 학부 행사 소식이 여기 붙어.'),
-      say('chiikawa', '(아직 비어 있으면… 조금만 기다려 주세요!)'),
+      say('hachiware', '광장 게시판이야! 이번 학기 학부 소식이 여기 다 붙어 있어.'),
+      say('usagi', '야하~! 다녀온 행사, 곧 열릴 행사, 준비 중인 계획까지!'),
+      say('chiikawa', '(학부설명회 다음 주엔 멘토링도 있어요… 같이 가요!)'),
     ],
-    places: { tracklist: ['광장 게시판', 'board'] },
+    places: {
+      done: ['이번 학기 진행한 행사', 'check'],
+      soon: ['곧 진행할 행사', 'board'],
+      plan: ['추진계획', 'sprout'],
+    },
   },
 };
 

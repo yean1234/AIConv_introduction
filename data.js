@@ -1015,9 +1015,23 @@ const RECORDS = [
     ink: 'dark',
     card: { chip: 'B-Side', title: '학부 행사', sub: 'Events & Moments' },
     stats: [],
-    // 행사를 추가하면 트랙리스트로 표시됩니다.
-    // 예: { date: '2027.03.02', title: '전공 설명회', place: '뉴턴홀 ○○○호', desc: '…', tag: '설명회' }
-    events: [],
+    // 26-2 임원단 사업 노션 기준 (주차는 SNS 홍보 일정 기준)
+    // group : done(이번 학기 진행한 행사) · soon(곧 진행할 행사) · plan(추진계획)
+    // date  : 화면에 보이는 날짜 글자 / day : (선택) 'YYYY-MM-DD' — 있으면 D-day 표시
+    events: [
+      { group: 'done', date: '5주차', title: '개강총회', tag: '총회' },
+      { group: 'done', date: '7주차', title: '학부합창대회', tag: '대회' },
+      { group: 'done', date: '7주차', title: '중간고사 파이팅', tag: '응원' },
+      { group: 'done', date: '8주차', title: '학부 MT 신청', tag: 'MT' },
+      { group: 'done', date: '9주차', title: '학부 통합 설문', tag: '설문' },
+      { group: 'soon', date: '11.11 (수)', day: '2026-11-11', title: '학부설명회', place: '헤브론홀', desc: 'GE · AI융합 · DS 전공 소개', tag: '설명회' },
+      { group: 'soon', date: '12주차', title: '학부 MT', tag: 'MT' },
+      { group: 'soon', date: '14주차', title: '종강총회', tag: '총회' },
+      { group: 'soon', date: '15주차', title: '기말고사 파이팅', tag: '응원' },
+      { group: 'plan', date: '11.18 (수) 예정', day: '2026-11-18', title: '학부멘토링사업', desc: '학부에 있는 멘토들과 만나 전공에 대한 설명을 듣는 자리', tag: '멘토링' },
+      { group: 'plan', date: '일정 미정', title: '학부교류사업', tag: '교류' },
+      { group: 'plan', date: '매주 · 시간 조율 중', title: '학부 기도회', desc: '기도 · 찬양 · 삶 나눔으로 매주 모이는 자리', tag: '기도회' },
+    ],
     sections: [],
   },
 ];
